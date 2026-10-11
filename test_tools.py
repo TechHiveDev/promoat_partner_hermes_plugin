@@ -1,0 +1,155 @@
+"""Unit tests for the Hermes plugin. No network."""
+
+from __future__ import annotations
+
+import io
+import json
+import os
+import re
+import sys
+import unittest
+import urllib.error
+from pathlib import Path
+from unittest.mock import patch
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import client
+import tools
+from schemas import SCHEMAS
+
+# Same tokens as partner-b2b-app/test/unit/_helpers/white-label-tokens.ts
+_TOKENS = [
+    ("minimax", re.compile(r"minimax", re.I)),
+    ("h3", re.compile(r"(?<![a-z0-9_</])h3(?![a-z0-9_>])", re.I)),
+    ("gemini", re.compile(r"gemini", re.I)),
+    ("seedream", re.compile(r"seedream", re.I)),
+    ("seedance", re.compile(r"seedance", re.I)),
+    ("fabric", re.compile(r"fabric", re.I)),
+    ("veed", re.compile(r"veed", re.I)),
+    ("eleven", re.compile(r"eleven", re.I)),
+    ("fal", re.compile(r"(?<![a-z])fal(?![a-z])", re.I)),
+    ("kling", re.compile(r"kling", re.I)),
+    ("sync", re.compile(r"(?<![a-z])sync(?![a-z])", re.I)),
+]
+
+
+class _Response:
+    def __init__(self, status: int, body: str):
+        self.status = status
+        self._body = body.encode("utf-8")
+
+    def read(self) -> bytes:
+        return self._body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+
+class ClientTests(unittest.TestCase):
+    def setUp(self):
+        self._env = patch.dict(os.environ, {"PROMOAT_KEY": "pmat_testkey", "PROMOAT_BASE_URL": "https://preview.example"}, clear=False)
+        self._env.start()
+        self._secret = patch.object(client, "_hermes_secret", return_value=None)
+        self._secret.start()
+
+    def tearDown(self):
+        self._secret.stop()
+        self._env.stop()
+
+    def test_missing_key_does_not_ask_to_paste(self):
+        with patch.dict(os.environ, {"PROMOAT_KEY": ""}, clear=False):
+            raw = client.call("GET", "/api/partner/v1/usage/summary")
+        body = json.loads(raw)
+        self.assertEqual(body["error_code"], "UNAUTHORIZED")
+        self.assertNotIn("paste your", body["message"].lower())
+        self.assertIn("Do not paste the key into chat", body["message"])
+
+    def test_estimate_video_posts_with_bearer(self):
+        seen = {}
+
+        def fake_urlopen(request, timeout=300):
+            seen["url"] = request.full_url
+            seen["method"] = request.get_method()
+            seen["auth"] = request.get_header("Authorization")
+            seen["body"] = json.loads(request.data.decode("utf-8"))
+            return _Response(200, '{"credits_required": 12}')
+
+        with patch.object(client.urllib.request, "urlopen", fake_urlopen):
+            raw = tools.HANDLERS["estimate_video"]({"mode": "talking_head", "script": "Hello"})
+        self.assertEqual(json.loads(raw)["credits_required"], 12)
+        self.assertEqual(seen["method"], "POST")
+        self.assertEqual(seen["url"], "https://preview.example/api/partner/v1/videos/estimate")
+        self.assertEqual(seen["auth"], "Bearer pmat_testkey")
+        self.assertEqual(seen["body"]["mode"], "talking_head")
+
+    def test_create_video_and_edit_send_idempotency_header(self):
+        seen = []
+
+        def fake_urlopen(request, timeout=300):
+            seen.append(
+                {
+                    "url": request.full_url,
+                    "header": request.get_header("Idempotency-key"),
+                    "body": json.loads(request.data.decode("utf-8")),
+                }
+            )
+            return _Response(200, '{"workflow_id": "job-1"}')
+
+        with patch.object(client.urllib.request, "urlopen", fake_urlopen):
+            tools.HANDLERS["create_video"](
+                {"mode": "talking_head", "character_id": "11111111-1111-1111-1111-111111111111", "idempotency_key": "key-create"}
+            )
+            tools.HANDLERS["fix_scene"](
+                {"workflowId": "job-1", "scene_index": 0, "idempotency_key": "key-edit", "dry_run": True}
+            )
+        self.assertEqual(seen[0]["header"], "key-create")
+        self.assertNotIn("idempotency_key", seen[0]["body"])
+        self.assertTrue(seen[1]["url"].endswith("/api/partner/v1/videos/job-1/fix-scene"))
+        self.assertEqual(seen[1]["header"], "key-edit")
+        self.assertNotIn("idempotency_key", seen[1]["body"])
+        self.assertNotIn("workflowId", seen[1]["body"])
+
+    def test_error_body_passes_through(self):
+        def fake_urlopen(request, timeout=300):
+            raise urllib.error.HTTPError(
+                request.full_url,
+                409,
+                "conflict",
+                hdrs=None,
+                fp=io.BytesIO(b'{"error_code":"QUOTE_MISMATCH","message":"price changed"}'),
+            )
+
+        with patch.object(client.urllib.request, "urlopen", fake_urlopen):
+            raw = tools.HANDLERS["estimate_video"]({"mode": "scenes"})
+        body = json.loads(raw)
+        self.assertEqual(body["error_code"], "QUOTE_MISMATCH")
+        self.assertEqual(body["message"], "price changed")
+
+    def test_connection_error_returns_json(self):
+        def fake_urlopen(request, timeout=300):
+            raise urllib.error.URLError("timed out")
+
+        with patch.object(client.urllib.request, "urlopen", fake_urlopen):
+            raw = tools.HANDLERS["get_balance"]({})
+        body = json.loads(raw)
+        self.assertEqual(body["error_code"], "TRANSPORT")
+        self.assertIn("timed out", body["message"])
+
+    def test_descriptions_are_white_label(self):
+        for name, description in tools.descriptions().items():
+            for token, pattern in _TOKENS:
+                self.assertIsNone(pattern.search(description), f"{name} leaks {token}: {description}")
+
+    def test_manifest_lists_every_tool(self):
+        text = (Path(__file__).resolve().parent / "plugin.yaml").read_text(encoding="utf-8")
+        listed = re.findall(r"^  - ([a-z_]+)$", text, re.M)
+        self.assertEqual(set(listed), set(SCHEMAS))
+        self.assertEqual(set(listed), set(tools.HANDLERS))
+
+
+if __name__ == "__main__":
+    unittest.main()

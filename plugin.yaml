@@ -1,0 +1,36 @@
+name: promoat
+version: "1.1.1"
+description: Realistic AI presenter videos. Estimate, create, and edit videos with your own Promoat account.
+author: Promoat
+homepage: https://platform.promoat.ai
+license: UNLICENSED
+provides_tools:
+  - estimate_video
+  - create_video
+  - create_character
+  - clone_voice
+  - list_voices
+  - get_balance
+  - get_job
+  - get_scenes
+  - fix_scene
+  - edit_script
+  - fix_sound
+  - list_characters
+  - get_character
+  - delete_character
+  - regenerate_character
+  - list_voice_presets
+  - delete_voice
+  - reclone_voice
+  - synthesize_speech
+  - create_first_frame
+  - plan_scenes
+  - list_assets
+  - get_asset
+  - list_jobs
+requires_env:
+  - name: PROMOAT_KEY
+    description: "Promoat partner API key (pmat_...). Each user brings their own key."
+    url: "https://platform.promoat.ai"
+    secret: true
