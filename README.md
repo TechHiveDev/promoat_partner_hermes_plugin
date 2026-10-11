@@ -7,7 +7,7 @@ Native Hermes plugin for the Promoat Partner API. It calls `https://platform.pro
 The plugin files sit at the repository root.
 
 ```bash
-hermes plugins install TechHiveDev/promoat_partner_hermes
+hermes plugins install TechHiveDev/promoat_partner_hermes_plugin
 ```
 
 Hermes asks for `PROMOAT_KEY` at install and stores it outside this package. Do not commit a key.
