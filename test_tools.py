@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import io
 import json
 import os
 import re
@@ -34,9 +33,21 @@ _TOKENS = [
 ]
 
 
+def _rpc(text: str, *, error: dict | None = None, is_error: bool = False) -> str:
+    if error is not None:
+        body = {"jsonrpc": "2.0", "id": 1, "error": error}
+    else:
+        result: dict = {"content": [{"type": "text", "text": text}]}
+        if is_error:
+            result["isError"] = True
+        body = {"jsonrpc": "2.0", "id": 1, "result": result}
+    return json.dumps(body)
+
+
 class _Response:
-    def __init__(self, status: int, body: str):
+    def __init__(self, status: int, body: str, content_type: str = "application/json"):
         self.status = status
+        self.headers = {"Content-Type": content_type}
         self._body = body.encode("utf-8")
 
     def read(self) -> bytes:
@@ -62,7 +73,7 @@ class ClientTests(unittest.TestCase):
 
     def test_missing_key_does_not_ask_to_paste(self):
         with patch.dict(os.environ, {"PROMOAT_KEY": ""}, clear=False):
-            raw = client.call("GET", "/api/partner/v1/usage/summary")
+            raw = client.call_tool("get_balance", {})
         body = json.loads(raw)
         self.assertEqual(body["error_code"], "UNAUTHORIZED")
         self.assertNotIn("paste your", body["message"].lower())
@@ -75,16 +86,21 @@ class ClientTests(unittest.TestCase):
             seen["url"] = request.full_url
             seen["method"] = request.get_method()
             seen["auth"] = request.get_header("Authorization")
+            seen["accept"] = request.get_header("Accept")
             seen["body"] = json.loads(request.data.decode("utf-8"))
-            return _Response(200, '{"credits_required": 12}')
+            return _Response(200, _rpc('{"credits_required": 12}'))
 
         with patch.object(client.urllib.request, "urlopen", fake_urlopen):
             raw = tools.HANDLERS["estimate_video"]({"mode": "talking_head", "script": "Hello"})
         self.assertEqual(json.loads(raw)["credits_required"], 12)
         self.assertEqual(seen["method"], "POST")
-        self.assertEqual(seen["url"], "https://preview.example/api/partner/v1/videos/estimate")
+        self.assertEqual(seen["url"], "https://preview.example/mcp")
         self.assertEqual(seen["auth"], "Bearer pmat_testkey")
-        self.assertEqual(seen["body"]["mode"], "talking_head")
+        self.assertIn("text/event-stream", seen["accept"])
+        self.assertEqual(seen["body"]["method"], "tools/call")
+        self.assertEqual(seen["body"]["params"]["name"], "estimate_video")
+        self.assertEqual(seen["body"]["params"]["arguments"]["mode"], "talking_head")
+        self.assertNotIn("/api/partner/", seen["url"])
 
     def test_create_video_and_edit_send_idempotency_header(self):
         seen = []
@@ -93,11 +109,10 @@ class ClientTests(unittest.TestCase):
             seen.append(
                 {
                     "url": request.full_url,
-                    "header": request.get_header("Idempotency-key"),
                     "body": json.loads(request.data.decode("utf-8")),
                 }
             )
-            return _Response(200, '{"workflow_id": "job-1"}')
+            return _Response(200, _rpc('{"workflow_id": "job-1"}'))
 
         with patch.object(client.urllib.request, "urlopen", fake_urlopen):
             tools.HANDLERS["create_video"](
@@ -106,28 +121,36 @@ class ClientTests(unittest.TestCase):
             tools.HANDLERS["fix_scene"](
                 {"workflowId": "job-1", "scene_index": 0, "idempotency_key": "key-edit", "dry_run": True}
             )
-        self.assertEqual(seen[0]["header"], "key-create")
-        self.assertNotIn("idempotency_key", seen[0]["body"])
-        self.assertTrue(seen[1]["url"].endswith("/api/partner/v1/videos/job-1/fix-scene"))
-        self.assertEqual(seen[1]["header"], "key-edit")
-        self.assertNotIn("idempotency_key", seen[1]["body"])
-        self.assertNotIn("workflowId", seen[1]["body"])
+        create_args = seen[0]["body"]["params"]["arguments"]
+        edit_args = seen[1]["body"]["params"]["arguments"]
+        self.assertEqual(seen[0]["url"], "https://preview.example/mcp")
+        self.assertEqual(seen[0]["body"]["params"]["name"], "create_video")
+        self.assertEqual(create_args["idempotency_key"], "key-create")
+        self.assertEqual(seen[1]["body"]["params"]["name"], "fix_scene")
+        self.assertEqual(edit_args["workflowId"], "job-1")
+        self.assertEqual(edit_args["idempotency_key"], "key-edit")
+        self.assertTrue(edit_args["dry_run"])
 
     def test_error_body_passes_through(self):
         def fake_urlopen(request, timeout=300):
-            raise urllib.error.HTTPError(
-                request.full_url,
-                409,
-                "conflict",
-                hdrs=None,
-                fp=io.BytesIO(b'{"error_code":"QUOTE_MISMATCH","message":"price changed"}'),
-            )
+            text = '{"error_code":"QUOTE_MISMATCH","message":"price changed"}'
+            return _Response(200, _rpc(text, is_error=True))
 
         with patch.object(client.urllib.request, "urlopen", fake_urlopen):
             raw = tools.HANDLERS["estimate_video"]({"mode": "scenes"})
         body = json.loads(raw)
         self.assertEqual(body["error_code"], "QUOTE_MISMATCH")
         self.assertEqual(body["message"], "price changed")
+
+    def test_sse_answer_is_read(self):
+        def fake_urlopen(request, timeout=300):
+            payload = _rpc('{"credits_balance": 4}')
+            raw = f"event: message\ndata: {payload}\n\n"
+            return _Response(200, raw, "text/event-stream")
+
+        with patch.object(client.urllib.request, "urlopen", fake_urlopen):
+            raw = tools.HANDLERS["get_balance"]({})
+        self.assertEqual(json.loads(raw)["credits_balance"], 4)
 
     def test_connection_error_returns_json(self):
         def fake_urlopen(request, timeout=300):
