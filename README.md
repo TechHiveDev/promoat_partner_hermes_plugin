@@ -1,6 +1,6 @@
 # Promoat for Hermes
 
-Native Hermes plugin for the Promoat Partner API. It calls the MCP server at `https://platform.promoat.ai/mcp` with the user's own `PROMOAT_KEY`. It does not charge, reserve, or refund on its own. `PROMOAT_BASE_URL` overrides the site host; the plugin always appends `/mcp`.
+Native Hermes plugin for the Promoat Partner API. It calls the MCP server at `https://promoat-platform-plugins.vercel.app/mcp` with the user's own `PROMOAT_KEY`. That server proxies to the live API at `https://platform.promoat.ai`. It does not charge, reserve, or refund on its own. `PROMOAT_BASE_URL` overrides the MCP host; the plugin always appends `/mcp`.
 
 ## Install from this repo
 
@@ -27,7 +27,7 @@ Paste this into Hermes `config.yaml`. The key stays in the profile `.env` as `PR
 ```yaml
 mcp_servers:
   promoat:
-    url: https://platform.promoat.ai/mcp
+    url: https://promoat-platform-plugins.vercel.app/mcp
     headers:
       Authorization: "Bearer ${PROMOAT_KEY}"
     trust: untrusted

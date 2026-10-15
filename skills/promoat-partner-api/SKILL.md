@@ -32,7 +32,7 @@ BASE="${PROMOAT_BASE_URL:-https://platform.promoat.ai}"
 
 When the Promoat MCP server is connected, call its tools instead of raw HTTP. The spend, idempotency, and polling rules in this file still apply. A tool result is the API's JSON, including `error_code` and `message` when the call fails.
 
-Connect to `{BASE}/mcp` with header `Authorization: Bearer $PROMOAT_KEY` (the same key as below). Do not paste the key into chat.
+Connect to `https://promoat-platform-plugins.vercel.app/mcp` with header `Authorization: Bearer $PROMOAT_KEY` (the same key as below). Do not paste the key into chat. `{BASE}` is the live API, which does not serve MCP.
 
 | Tool | API |
 |---|---|

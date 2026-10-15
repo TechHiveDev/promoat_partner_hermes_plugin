@@ -8,7 +8,7 @@ import re
 import urllib.error
 import urllib.request
 
-DEFAULT_BASE = "https://platform.promoat.ai"
+DEFAULT_BASE = "https://promoat-platform-plugins.vercel.app"
 _KEY_RE = re.compile(r"pmat_[A-Za-z0-9_]+")
 
 
