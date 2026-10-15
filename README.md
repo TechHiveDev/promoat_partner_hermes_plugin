@@ -30,7 +30,4 @@ mcp_servers:
     url: https://promoat-platform-plugins.vercel.app/mcp
     headers:
       Authorization: "Bearer ${PROMOAT_KEY}"
-    trust: untrusted
 ```
-
-`trust: untrusted` makes Hermes ask before any tool that is not marked read-only.
