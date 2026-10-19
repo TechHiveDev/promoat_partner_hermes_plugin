@@ -25,11 +25,10 @@ def mcp_url() -> str:
 
 
 def api_key() -> str | None:
-    secret = _hermes_secret("PROMOAT_KEY")
-    if secret:
-        return secret
-    env = os.environ.get("PROMOAT_KEY", "").strip()
-    return env or None
+    # Only Hermes's profile-scoped secret store. get_secret() already covers the
+    # env/profile lookup; reading os.environ here could pick up another
+    # profile's key when several profiles share one process.
+    return _hermes_secret("PROMOAT_KEY")
 
 
 def _hermes_secret(name: str) -> str | None:
@@ -53,8 +52,8 @@ def call_tool(name: str, args: dict | None = None) -> str:
             {
                 "error_code": "UNAUTHORIZED",
                 "message": (
-                    "PROMOAT_KEY is not set. Add it in Hermes when the plugin asks, "
-                    "or export PROMOAT_KEY in the shell. Do not paste the key into chat."
+                    "PROMOAT_KEY is not set. Set PROMOAT_KEY in Hermes. "
+                    "Do not paste the key into chat."
                 ),
             }
         )

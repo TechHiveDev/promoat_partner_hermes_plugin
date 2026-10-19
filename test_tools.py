@@ -62,9 +62,9 @@ class _Response:
 
 class ClientTests(unittest.TestCase):
     def setUp(self):
-        self._env = patch.dict(os.environ, {"PROMOAT_KEY": "pmat_testkey", "PROMOAT_BASE_URL": "https://preview.example"}, clear=False)
+        self._env = patch.dict(os.environ, {"PROMOAT_BASE_URL": "https://preview.example"}, clear=False)
         self._env.start()
-        self._secret = patch.object(client, "_hermes_secret", return_value=None)
+        self._secret = patch.object(client, "_hermes_secret", return_value="pmat_testkey")
         self._secret.start()
 
     def tearDown(self):
@@ -72,12 +72,19 @@ class ClientTests(unittest.TestCase):
         self._env.stop()
 
     def test_missing_key_does_not_ask_to_paste(self):
-        with patch.dict(os.environ, {"PROMOAT_KEY": ""}, clear=False):
+        with patch.object(client, "_hermes_secret", return_value=None):
             raw = client.call_tool("get_balance", {})
         body = json.loads(raw)
         self.assertEqual(body["error_code"], "UNAUTHORIZED")
         self.assertNotIn("paste your", body["message"].lower())
         self.assertIn("Do not paste the key into chat", body["message"])
+
+    def test_key_never_read_from_os_environ(self):
+        with patch.dict(os.environ, {"PROMOAT_KEY": "pmat_other_profile"}, clear=False), \
+                patch.object(client, "_hermes_secret", return_value=None):
+            self.assertIsNone(client.api_key())
+            body = json.loads(client.call_tool("get_balance", {}))
+        self.assertEqual(body["error_code"], "UNAUTHORIZED")
 
     def test_estimate_video_posts_with_bearer(self):
         seen = {}
