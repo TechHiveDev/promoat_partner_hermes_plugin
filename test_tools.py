@@ -169,6 +169,35 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(body["error_code"], "TRANSPORT")
         self.assertIn("timed out", body["message"])
 
+    def test_get_job_wait_is_local_and_not_sent(self):
+        seen = {}
+        slept = []
+
+        def fake_urlopen(request, timeout=300):
+            seen["body"] = json.loads(request.data.decode("utf-8"))
+            return _Response(200, _rpc('{"status": "running"}'))
+
+        with patch.object(client.urllib.request, "urlopen", fake_urlopen), \
+                patch.object(tools.time, "sleep", slept.append):
+            raw = tools.HANDLERS["get_job"]({"workflowId": "job-1", "wait_seconds": 9})
+        self.assertEqual(json.loads(raw)["status"], "running")
+        self.assertEqual(slept, [9.0])
+        self.assertEqual(seen["body"]["params"]["name"], "get_job")
+        self.assertEqual(seen["body"]["params"]["arguments"], {"workflowId": "job-1"})
+
+    def test_get_job_wait_is_capped_and_optional(self):
+        slept = []
+
+        def fake_urlopen(request, timeout=300):
+            return _Response(200, _rpc('{"status": "running"}'))
+
+        with patch.object(client.urllib.request, "urlopen", fake_urlopen), \
+                patch.object(tools.time, "sleep", slept.append):
+            tools.HANDLERS["get_job"]({"workflowId": "job-1", "wait_seconds": 999})
+            tools.HANDLERS["get_job"]({"workflowId": "job-1"})
+            tools.HANDLERS["get_job"]({"workflowId": "job-1", "wait_seconds": "abc"})
+        self.assertEqual(slept, [float(tools.MAX_WAIT_SECONDS)])
+
     def test_descriptions_are_white_label(self):
         for name, description in tools.descriptions().items():
             for token, pattern in _TOKENS:

@@ -108,7 +108,7 @@ SCHEMAS = {
     ),
     "create_video": _tool(
         "create_video",
-        "Queue a video generation job (talking_head or scenes)",
+        "Queue a video generation job (talking_head or scenes). Spends credits: only call after estimate_video and after the user has confirmed the price",
         {**_VIDEO_FIELDS, "idempotency_key": _IDEM},
         ["mode", "character_id"],
     ),
@@ -147,7 +147,20 @@ SCHEMAS = {
             "to": _str(description="ISO date-time. Defaults to now."),
         },
     ),
-    "get_job": _tool("get_job", "Poll a job's status", {"workflowId": _str(min_length=1)}, ["workflowId"]),
+    "get_job": _tool(
+        "get_job",
+        "Poll a job's status. Set wait_seconds (8-10) to pause before checking, so you can poll repeatedly without a sleep script",
+        {
+            "workflowId": _str(min_length=1),
+            "wait_seconds": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 30,
+                "description": "Pause this many seconds before checking (handled by the plugin, 0-30). Use 8-10 between polls.",
+            },
+        },
+        ["workflowId"],
+    ),
     "get_scenes": _tool(
         "get_scenes",
         "The scenes of a finished video (use the indices with the edit endpoints)",

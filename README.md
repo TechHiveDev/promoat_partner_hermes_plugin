@@ -1,33 +1,38 @@
 # Promoat for Hermes
 
-Native Hermes plugin for the Promoat Partner API. It calls the MCP server at `https://promoat-platform-plugins.vercel.app/mcp` with the user's own `PROMOAT_KEY`. That server proxies to the live API at `https://platform.promoat.ai`. It does not charge, reserve, or refund on its own. `PROMOAT_BASE_URL` overrides the MCP host; the plugin always appends `/mcp`.
+## What this plugin does
 
-## Install from this repo
+Promoat turns a script into a finished vertical 9:16 marketing video fronted by a realistic AI presenter. This plugin lets you do that from Hermes, with your own Promoat account, in plain conversation.
 
-The plugin files sit at the repository root.
+With it, Hermes can:
+
+- Create presenter characters from selfies or a text description.
+- Pick a free studio voice or clone your own.
+- Create talking-head or multi-scene videos from a script or your own audio.
+- Show the credit price before spending, then track the job until the video is ready.
+- Edit finished videos: redo a scene, rewrite lines, or replace the sound.
+- Check your credit balance, job history and generated assets.
+
+Credits are used only with your own `PROMOAT_KEY`. Get an account, credits and a key at https://platform.promoat.ai.
+
+## Install
+
+Pick one of the two options:
 
 ```bash
+# From the Hermes plugin catalog
+hermes plugins install promoat
+
+# From the GitHub repository
 hermes plugins install TechHiveDev/promoat_partner_hermes_plugin
 ```
 
-Hermes asks for `PROMOAT_KEY` at install and stores it outside this package. Do not commit a key.
+Hermes asks for `PROMOAT_KEY` at install and stores it outside this package. Do not commit a key or paste it in chat.
 
-Check the folder before installing:
+## Check the folder before installing
 
 ```bash
 hermes plugins doctor . --ci
 hermes plugins validate .
 python -m unittest test_tools.py
-```
-
-## MCP server instead of this plugin
-
-Paste this into Hermes `config.yaml`. The key stays in the profile `.env` as `PROMOAT_KEY`.
-
-```yaml
-mcp_servers:
-  promoat:
-    url: https://promoat-platform-plugins.vercel.app/mcp
-    headers:
-      Authorization: "Bearer ${PROMOAT_KEY}"
 ```
