@@ -21,7 +21,7 @@ Pick one of the two options:
 
 ```bash
 # From the Hermes plugin catalog
-hermes plugins install promoat
+hermes plugins install promoat-ai-video-clone
 
 # From the GitHub repository
 hermes plugins install TechHiveDev/promoat_partner_hermes_plugin
